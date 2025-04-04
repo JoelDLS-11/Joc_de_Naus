@@ -1,0 +1,263 @@
+import time
+import random
+from pygame.locals import *
+import pygame
+
+# Constantes
+AMPLADA = 800
+ALTURA = 600
+FPS = 60
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+ORANGE = (255, 165, 0)
+YELLOW = (255, 255, 0)
+MAGENTA = (255, 0, 255)
+VIOLET = (115, 49, 152)
+PINK = (255, 163, 177)
+ASSETS = {
+    'background': 'assets/fondo.png',
+    'music': 'assets/music.mp3',
+    'bullet1': 'assets/bala1.png',
+    'bullet2': 'assets/bala2.png',
+    'player1': 'assets/nave_espacial.png',
+    'player2': 'assets/nave_enemiga.png',
+    'life1': 'assets/vida1.png',
+    'life2': 'assets/vida2.png',
+    'menu': 'assets/menuA.png',
+    'credits': 'assets/credit.png',
+    'gameover': 'assets/gameover.png'
+}
+
+
+# Clase para una partícula de la explosión
+class Particle:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.radius = random.uniform(2, 5)
+        self.color = random.choice([RED, ORANGE, YELLOW])
+        self.speed_x = random.uniform(-3, 3)
+        self.speed_y = random.uniform(-3, 3)
+        self.life = random.randint(20, 40)  # Frames de vida
+
+    def update(self):
+        self.x += self.speed_x
+        self.y += self.speed_y
+        self.life -= 1
+        self.radius *= 0.95  # Reducción gradual del tamaño
+        return self.life > 0
+
+    def draw(self, surface):
+        pygame.draw.circle(surface, self.color, (int(self.x), int(self.y)), int(self.radius))
+
+
+# Clase para la explosión
+class Explosion:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.particles = [Particle(x, y) for _ in range(20)]  # 20 partículas por explosión
+        self.active = True
+
+    def update(self):
+        self.active = False
+        for particle in self.particles[:]:
+            if particle.update():
+                self.active = True
+            else:
+                self.particles.remove(particle)
+        return self.active
+
+    def draw(self, surface):
+        for particle in self.particles:
+            particle.draw(surface)
+
+
+# Clase para jugadores
+class Player:
+    def __init__(self, image_path, x, y, speed, bullet_img, life_img):
+        try:
+            self.image = pygame.image.load(image_path)
+            self.bullet_img = pygame.image.load(bullet_img)
+            self.life_img = pygame.image.load(life_img)
+        except pygame.error as e:
+            print(f"Error cargando imagen: {e}")
+            pygame.quit()
+            exit()
+        self.rect = self.image.get_rect(midbottom=(x, y))
+        self.speed = speed
+        self.bullets = []
+        self.last_shot = 0
+        self.lives = 6
+
+
+# Inicialización
+pygame.init()
+pantalla = pygame.display.set_mode((AMPLADA, ALTURA))
+pygame.display.set_caption("Arcade")
+clock = pygame.time.Clock()
+
+# Configuración inicial
+bullet_speed = 5
+shot_cooldown = 225
+try:
+    player1 = Player(ASSETS['player1'], AMPLADA // 2, ALTURA - 10, 5, ASSETS['bullet2'], ASSETS['life2'])
+    player2 = Player(ASSETS['player2'], AMPLADA // 2, ALTURA - 500, 5, ASSETS['bullet1'], ASSETS['life1'])
+except:
+    print("Error inicializando jugadores. Verifica las rutas de los assets.")
+    pygame.quit()
+    exit()
+
+explosions = []  # Lista para almacenar explosiones
+winner = 0
+current_screen = 1
+
+
+# Funciones auxiliares
+def draw_background(image_path):
+    try:
+        background = pygame.image.load(image_path).convert()
+        pantalla.blit(background, (0, 0))
+    except pygame.error as e:
+        print(f"Error cargando fondo: {e}")
+
+
+def draw_text(text, font_size, color, x, y):
+    font = pygame.font.SysFont(None, font_size)
+    img = font.render(text, True, color)
+    pantalla.blit(img, (x, y))
+
+
+def show_menu():
+    draw_background(ASSETS['menu'])
+    draw_text("1. Començar partida", 50, BLACK, 248, 275)
+    draw_text("2. Veure crèdits", 50, BLACK, 248, 365)
+    draw_text("3. Sortir", 50, RED, 248, 460)
+
+
+def show_credits():
+    draw_background(ASSETS['credits'])
+    texts = [
+        ("Programació:", VIOLET, 60, 60, 215),
+        ("Gràfics:", VIOLET, 60, 60, 315),
+        ("Música:", VIOLET, 60, 60, 415),
+        ("Sons:", VIOLET, 60, 60, 515),
+        ("Joel de los Santos", PINK, 50, 160, 265),
+        ("Joel de los Santos", PINK, 50, 160, 365),
+        ("El Señor de la Noche - Don Omar", PINK, 50, 160, 465),  # Corregido de 465A a 465
+        ("Freesound.org", PINK, 50, 160, 565)
+    ]
+    for text, color, size, x, y in texts:
+        draw_text(text, size, color, x, y)
+
+
+def draw_lives(player, positions):
+    for i, pos in enumerate(positions):
+        if player.lives > i:
+            pantalla.blit(player.life_img, pos)
+
+
+# Bucle principal
+while True:
+    current_time = pygame.time.get_ticks()
+
+    for event in pygame.event.get():
+        if event.type == QUIT:
+            pygame.quit()
+            exit()
+
+        if current_screen == 1:
+            if event.type == KEYDOWN:
+                if event.key == K_1:
+                    current_screen = 3
+                elif event.key == K_2:
+                    current_screen = 2
+                elif event.key == K_3:
+                    pygame.quit(); exit()
+
+        elif current_screen == 2:
+            if event.type == KEYDOWN and event.key == K_SPACE:
+                current_screen = 1
+
+        elif current_screen == 3:
+            if event.type == KEYDOWN:
+                if event.key == K_w and current_time - player1.last_shot >= shot_cooldown:
+                    player1.bullets.append(pygame.Rect(player1.rect.centerx - 2, player1.rect.top, 4, 10))
+                    player1.last_shot = current_time
+                if event.key == K_UP and current_time - player2.last_shot >= shot_cooldown:
+                    player2.bullets.append(pygame.Rect(player2.rect.centerx - 2, player2.rect.bottom - 10, 4, 10))
+                    player2.last_shot = current_time
+
+        elif current_screen == 4:
+            if event.type == KEYDOWN and event.key == K_SPACE:
+                player1.lives = player2.lives = 6
+                player1.bullets.clear()
+                player2.bullets.clear()
+                explosions.clear()
+                current_screen = 1
+
+    if current_screen == 1:
+        show_menu()
+
+    elif current_screen == 2:
+        show_credits()
+
+    elif current_screen == 3:
+        # Movimiento
+        keys = pygame.key.get_pressed()
+        player1.rect.x += (keys[K_d] - keys[K_a]) * player1.speed
+        player2.rect.x += (keys[K_RIGHT] - keys[K_LEFT]) * player2.speed
+        player1.rect.clamp_ip(pantalla.get_rect())
+        player2.rect.clamp_ip(pantalla.get_rect())
+
+        # Actualizar balas del jugador 1
+        for bullet in player1.bullets[:]:
+            bullet.y -= bullet_speed
+            if bullet.bottom < 0 or bullet.top > ALTURA:
+                player1.bullets.remove(bullet)
+            elif player2.rect.colliderect(bullet):
+                player1.bullets.remove(bullet)
+                player2.lives -= 1
+                explosions.append(Explosion(player2.rect.centerx, player2.rect.centery))
+                print(f"BOOM! Vides jugador 2: {player2.lives}")
+
+        # Actualizar balas del jugador 2
+        for bullet in player2.bullets[:]:
+            bullet.y += bullet_speed
+            if bullet.bottom < 0 or bullet.top > ALTURA:
+                player2.bullets.remove(bullet)
+            elif player1.rect.colliderect(bullet):
+                player2.bullets.remove(bullet)
+                player1.lives -= 1
+                explosions.append(Explosion(player1.rect.centerx, player1.rect.centery))
+                print(f"BOOM! Vides jugador 1: {player1.lives}")
+
+        # Actualizar y dibujar explosiones
+        for explosion in explosions[:]:
+            if not explosion.update():
+                explosions.remove(explosion)
+
+        # Verificar fin del juego
+        if player1.lives <= 0 or player2.lives <= 0:
+            winner = 2 if player1.lives <= 0 else 1
+            current_screen = 4
+
+        # Dibujar
+        draw_background(ASSETS['background'])
+        pantalla.blit(player1.image, player1.rect)
+        pantalla.blit(player2.image, player2.rect)
+        for bullet in player1.bullets: pantalla.blit(player1.bullet_img, bullet)
+        for bullet in player2.bullets: pantalla.blit(player2.bullet_img, bullet)
+        for explosion in explosions: explosion.draw(pantalla)
+
+        # Dibujar vidas
+        draw_lives(player1, [(730, 520), (700, 520), (670, 520), (670, 550), (700, 550), (730, 550)])
+        draw_lives(player2, [(40, 60), (70, 60), (100, 60), (100, 30), (70, 30), (40, 30)])
+
+    elif current_screen == 4:
+        draw_background(ASSETS['gameover'])
+        draw_text(f"Player {winner} Wins!", 100, WHITE, 150, 40)
+
+    pygame.display.update()
+    clock.tick(FPS)
